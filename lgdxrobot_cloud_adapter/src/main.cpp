@@ -1,4 +1,5 @@
 #include "lgdxrobot_cloud_adapter/CloudAdapter.hpp"
+#include "lgdxrobot_cloud_adapter/RobotStatus.hpp"
 
 int main(int argc, char **argv)
 {

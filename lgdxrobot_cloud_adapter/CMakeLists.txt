@@ -41,6 +41,7 @@ include_directories(include)
 add_executable(${EXECUTABLE_NAME} 
   src/main.cpp
   src/CloudAdapter.cpp
+  src/RobotStatus.cpp
 )
 target_link_libraries(${EXECUTABLE_NAME} 
   ${PROTO_NAME}
