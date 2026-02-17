@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(lgdxrobot_cloud_adapter)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(EXECUTABLE_NAME lgdxrobot_cloud_adapter)
 set(PROTO_NAME lgdxrobot_cloud_adapter_proto)
 
@@ -36,6 +37,7 @@ protobuf_generate(TARGET ${PROTO_NAME} LANGUAGE grpc GENERATE_EXTENSIONS .grpc.p
 #
 # Node
 #
+add_subdirectory(../third_party/hwinfo hwinfo)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -49,6 +51,7 @@ add_library(lgdxrobot_cloud_component SHARED
 target_link_libraries(lgdxrobot_cloud_component
   ${PROTO_NAME}
   "${cpp_typesupport_target}"
+  hwinfo
 )
 ament_target_dependencies(lgdxrobot_cloud_component
   rclcpp
