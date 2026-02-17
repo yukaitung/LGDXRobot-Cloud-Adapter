@@ -5,6 +5,23 @@
 
 #include "proto/RobotClientsService.pb.h"
 
+/*
+Usage:
+RCLCPP_INFO(this->get_logger(), "Current Status: %d", RobotStatus::GetStatus(robotStatus));
+
+// Change status
+robotStatus = std::get<RobotStatus::Offline>(robotStatus).connected();
+RCLCPP_INFO(this->get_logger(), "New Status: %d", RobotStatus::GetStatus(robotStatus));
+
+// Enter Critical
+robotStatus = RobotStatus::CriticalManager::Enter(robotStatus);
+RCLCPP_INFO(this->get_logger(), "New Status: %d", RobotStatus::GetStatus(robotStatus));
+
+// Exit Critical
+robotStatus = RobotStatus::CriticalManager::Exit();
+RCLCPP_INFO(this->get_logger(), "New Status: %d", RobotStatus::GetStatus(robotStatus));
+*/
+
 namespace RobotStatus
 {
 
@@ -106,6 +123,7 @@ class Charging : public IBase
 class Offline : public IBase
 {
   public:
+    Offline() = default;
     RobotClientsRobotStatus GetStatus() const override {return RobotClientsRobotStatus::Offline;}
     Idle connected();
 };
@@ -114,11 +132,13 @@ class Offline : public IBase
 class CriticalManager
 {
   private:
-    static StateMachine savedStatus;
+    static inline StateMachine savedStatus;
   public:
-    static Critical EnterCritical(StateMachine currentStatus) {savedStatus = currentStatus; return Critical();}
-    static StateMachine ExitCritical() {return savedStatus;}
+    static Critical Enter(StateMachine currentStatus) {savedStatus = currentStatus; return Critical();}
+    static StateMachine Exit() {return savedStatus;}
 };
+
+RobotClientsRobotStatus GetStatus(StateMachine &status);
 
 }
 

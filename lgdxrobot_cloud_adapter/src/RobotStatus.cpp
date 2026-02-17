@@ -83,3 +83,19 @@ RobotStatus::Idle RobotStatus::Offline::connected()
 {
   return RobotStatus::Idle();
 }
+
+RobotClientsRobotStatus RobotStatus::GetStatus(StateMachine &status)
+{
+  return std::visit([](auto &&status) -> RobotClientsRobotStatus 
+  {
+    using T = std::decay_t<decltype(status)>;
+    if constexpr (std::is_same_v<T, std::monostate>)
+    {
+      return RobotClientsRobotStatus::Offline;
+    }
+    else
+    {
+      return status.GetStatus();
+    }
+  }, status);
+}
