@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>lgdxrobot_cloud_adapter</name>
+  <version>0.0.0</version>
+  <description>Universal ROS 2 Adapter for LGDXRobotics Cloud</description>
+  <license>MIT</license>
+  <maintainer email="info@bristolgram.uk">LGDXRobotics</maintainer>
+  <author email="info@bristolgram.uk">LGDXRobotics</author>
+  <url type="website">https://lgdxrobot.bristolgram.uk/cloud</url>
+  <url type="repository">https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter</url>
+  <url type="bugtracker">https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/-/issues</url>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>libgrpc</buildtool_depend>
+  <buildtool_depend>protobuf-dev</buildtool_depend>
+  <buildtool_depend>protobuf-compiler-grpc</buildtool_depend>
+
+  <exec_depend>libgrpc</exec_depend>
+  
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
