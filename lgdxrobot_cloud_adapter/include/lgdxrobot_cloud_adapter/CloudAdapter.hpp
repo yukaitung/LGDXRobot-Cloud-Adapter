@@ -12,6 +12,7 @@
 #include "lgdxrobot_cloud_msgs/msg/robot_data.hpp"
 #include "lgdxrobot_cloud_msgs/srv/auto_task_abort.hpp"
 #include "lgdxrobot_cloud_msgs/srv/auto_task_next.hpp"
+#include "lgdxrobot_cloud_msgs/srv/mcu_sn.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "proto/RobotClientsService.grpc.pb.h"
 #include "rclcpp/rclcpp.hpp"
@@ -54,6 +55,7 @@ class CloudAdapter : public rclcpp::Node
     rclcpp::TimerBase::SharedPtr robotDataPublisherTimer;
     rclcpp::Publisher<lgdxrobot_cloud_msgs::msg::AutoTask>::SharedPtr autoTaskPublisher;
     rclcpp::Publisher<lgdxrobot_cloud_msgs::msg::RobotData>::SharedPtr robotDataPublisher;
+    rclcpp::Service<lgdxrobot_cloud_msgs::srv::McuSn>::SharedPtr mcuSerialNumberService;
     rclcpp::Service<lgdxrobot_cloud_msgs::srv::AutoTaskNext>::SharedPtr autoTaskNextService;
     rclcpp::Service<lgdxrobot_cloud_msgs::srv::AutoTaskAbort>::SharedPtr autoTaskAbortService;
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr mapSubscription;
@@ -62,6 +64,7 @@ class CloudAdapter : public rclcpp::Node
 
     // Robot Data
     RobotStatus::StateMachine robotStatus = RobotStatus::Offline();
+    bool hasMcuSn = false;
     bool isSlam = false;
     bool pauseTaskAssignment = false;
     lgdxrobot_cloud_msgs::msg::RobotData robotData;

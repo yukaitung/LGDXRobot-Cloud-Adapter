@@ -160,6 +160,21 @@ void CloudAdapter::Initalise()
   if (needMcuSn)
   {
     // Require MCU Serial Number before connecting to the cloud
+    mcuSerialNumberService = this->create_service<lgdxrobot_cloud_msgs::srv::McuSn>("mcu_sn",
+      [this](const std::shared_ptr<lgdxrobot_cloud_msgs::srv::McuSn::Request> request,
+        std::shared_ptr<lgdxrobot_cloud_msgs::srv::McuSn::Response> response)
+      {
+        if (hasMcuSn == false && !request->muc_sn.empty())
+        {
+          hasMcuSn = true;
+          Greet(request->muc_sn);
+          response->success = true;
+        }
+        else
+        {
+          response->success = false;
+        }
+      });
   }
   else
   {
