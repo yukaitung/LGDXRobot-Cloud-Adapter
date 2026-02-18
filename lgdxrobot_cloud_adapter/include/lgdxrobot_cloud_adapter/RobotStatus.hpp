@@ -68,7 +68,7 @@ class Running : public IBase
   public:
     RobotClientsRobotStatus GetStatus() const override {return RobotClientsRobotStatus::Running;}
     Idle TaskCompleted();
-    Stuck NaviagtionStuck();
+    Stuck NavigationStuck();
     Aborting AbortTask();
 };
 

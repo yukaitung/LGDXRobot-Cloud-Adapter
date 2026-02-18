@@ -24,7 +24,7 @@ RobotStatus::Idle RobotStatus::Running::TaskCompleted()
   return RobotStatus::Idle();
 }
 
-RobotStatus::Stuck RobotStatus::Running::NaviagtionStuck()
+RobotStatus::Stuck RobotStatus::Running::NavigationStuck()
 {
   return RobotStatus::Stuck();
 }

@@ -17,7 +17,11 @@
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
+
 #include "RobotStatus.hpp"
+#include "Map.hpp"
+#include "Navigation.hpp"
+#include "Exchange.hpp"
 
 namespace LGDXRobotCloud
 {
@@ -33,6 +37,14 @@ class CloudAdapter : public rclcpp::Node
 {
   private:
     const int kGrpcWaitSec = 5;
+
+    // Modules
+    std::unique_ptr<Map> map;
+    std::unique_ptr<Navigation> navigation;
+    std::unique_ptr<IExchange> exchangeStream;
+
+    std::shared_ptr<CloudSignals> cloudSignals;
+    std::shared_ptr<NavigationSignals> navigationSignals;
 
     // ROS
     rclcpp::TimerBase::SharedPtr timer;
@@ -80,31 +92,24 @@ class CloudAdapter : public rclcpp::Node
     std::shared_ptr<grpc::CallCredentials> accessToken;
     CloudErrorRetryData cloudErrorRetryData;
 
-    std::string ReadCertificate(const char *filename);
-    #ifdef __linux__ 
-    std::string GetMotherBoardSerialNumber();
-    #endif
-    void SetSystemInfo(RobotClientsSystemInfo *info);
-    void HandleError();
+    void Initalise();
 
-    void UpdateExchange();
+    // Greet
+    std::string GreetReadCertificate(const char *filename);
+    #ifdef __linux__ 
+    std::string GreetSetMotherBoardSN();
+    #endif
+    void GreetSetSystemInfo(RobotClientsSystemInfo *info);
+    void Greet(std::string mcuSN);
+
+    void ExchangeProcessData();
     void CloudExchange();
     void SlamExchange();
     void OnSlamMapUpdate(const nav_msgs::msg::OccupancyGrid &msg);
 
-    void TryExitCriticalStatus();
-
-  public:
-    CloudAdapter(const rclcpp::NodeOptions &options);
-    void Initalise();
-
-    void Greet(std::string mcuSN);
-    void OnErrorOccured();
-
-    void OnConnectedCloud();
     void CloudAutoTaskNext();
     void CloudAutoTaskAbort(RobotClientsAbortReason reason);
-    void OnNextCloudChange();
+    void OnNextExchange();
     void OnHandleClouldExchange(const RobotClientsResponse *response);
     void OnNextSlamExchange();
     void OnHandleSlamExchange(const RobotClientsSlamCommands *response);
@@ -115,7 +120,13 @@ class CloudAdapter : public rclcpp::Node
     void OnNavigationStuck();
     void OnNavigationCleared();
 
+    void TryExitCriticalStatus();
+    void HandleError();
+    void OnErrorOccured();
     void Shutdown();
+
+  public:
+    CloudAdapter(const rclcpp::NodeOptions &options);
 };
 
 }

@@ -1,43 +1,43 @@
 #include "lgdxrobot_cloud_adapter/Exchange.hpp"
 
-//Cloud Exchange
-CloudExchange::CloudExchange(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr)
+//CloudExchangeType
+CloudExchangeType::CloudExchangeType(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr)
 {
   cloudExchangeStream = std::make_unique<CloudExchangeStream>(stub, accessToken, cloudSignalsPtr);
 }
 
-void CloudExchange::SendMessage(const RobotClientsData &robotData, const RobotClientsNextToken &nextToken, const RobotClientsAbortToken &abortToken)
+void CloudExchangeType::SendMessage(const RobotClientsData &robotData, const RobotClientsNextToken &nextToken, const RobotClientsAbortToken &abortToken)
 {
   cloudExchangeStream->SendMessage(robotData, nextToken, abortToken);
 }
 
-void CloudExchange::Shutdown()
+void CloudExchangeType::Shutdown()
 {
   cloudExchangeStream->Shutdown();
 }
 
-grpc::Status CloudExchange::AwaitCompletion()
+grpc::Status CloudExchangeType::AwaitCompletion()
 {
   return cloudExchangeStream->AwaitCompletion();
 }
 
 //Slam Exchange
-SlamExchange::SlamExchange(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr)
+SlamExchangeType::SlamExchangeType(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr)
 {
   slamExchangeStream = std::make_unique<SlamExchangeStream>(stub, accessToken, cloudSignalsPtr);
 }
 
-void SlamExchange::SendMessage(const RobotClientsSlamStatus status, const RobotClientsData &robotData, const RobotClientsMapData &mapData)
+void SlamExchangeType::SendMessage(const RobotClientsSlamStatus status, const RobotClientsData &robotData, const RobotClientsMapData &mapData)
 {
   slamExchangeStream->SendMessage(status, robotData, mapData);
 }
 
-void SlamExchange::Shutdown()
+void SlamExchangeType::Shutdown()
 {
   slamExchangeStream->Shutdown();
 }
 
-grpc::Status SlamExchange::AwaitCompletion()
+grpc::Status SlamExchangeType::AwaitCompletion()
 {
   return slamExchangeStream->AwaitCompletion();
 }

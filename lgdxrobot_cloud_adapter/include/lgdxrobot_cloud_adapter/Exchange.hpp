@@ -18,25 +18,25 @@ class IExchange
     virtual grpc::Status AwaitCompletion() = 0;
 };
 
-class CloudExchange : public IExchange
+class CloudExchangeType : public IExchange
 {
     private:
     std::unique_ptr<CloudExchangeStream> cloudExchangeStream;
 
   public:
-    CloudExchange(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr);
+    CloudExchangeType(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr);
     void SendMessage(const RobotClientsData &robotData, const RobotClientsNextToken &nextToken, const RobotClientsAbortToken &abortToken) override;
     void Shutdown() override;
     grpc::Status AwaitCompletion() override;
 };
 
-class SlamExchange : public IExchange
+class SlamExchangeType : public IExchange
 {
     private:
     std::unique_ptr<SlamExchangeStream> slamExchangeStream;
 
   public:
-    SlamExchange(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr);
+    SlamExchangeType(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr);
     void SendMessage(const RobotClientsSlamStatus status, const RobotClientsData &robotData, const RobotClientsMapData &mapData) override;
     void Shutdown() override;
     grpc::Status AwaitCompletion() override;

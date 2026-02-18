@@ -26,6 +26,9 @@ void CloudAdapter::Initalise()
   auto cloudSlamEnableParam = rcl_interfaces::msg::ParameterDescriptor{};
   cloudSlamEnableParam.description = "Enable SLAM Mode.";
   this->declare_parameter("slam_enable", false, cloudSlamEnableParam);
+  auto cloudNeedMcuSn = rcl_interfaces::msg::ParameterDescriptor{};
+  cloudSlamEnableParam.description = "Require MCU Serial Number before connecting to the cloud.";
+  this->declare_parameter("need_mcu_sn", false, cloudNeedMcuSn);
   auto cloudAddressParam = rcl_interfaces::msg::ParameterDescriptor{};
   cloudAddressParam.description = "Address of LGDXRobot2 Cloud.";
   this->declare_parameter("address", "", cloudAddressParam);
@@ -39,14 +42,23 @@ void CloudAdapter::Initalise()
   cloudClientCertParam.description = "Path to client's certificate chain.";
   this->declare_parameter("client_cert", "", cloudClientCertParam);
 
+  isSlam = this->get_parameter("slam_enable").as_bool();
+  // Components
+  cloudSignals = std::make_shared<CloudSignals>();
+  navigationSignals = std::make_shared<NavigationSignals>();
+  navigation = std::make_unique<Navigation>(shared_from_this(), navigationSignals, navProgress);
+  if (isSlam)
+  {
+    map = std::make_unique<Map>(shared_from_this());
+  }
+
   // ROS
-  isSlam = this->get_parameter("cloud_slam_enable").as_bool();
   tfBuffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
   if (isSlam)
   {
-    /*cloudExchangeTimer = this->create_wall_timer(std::chrono::milliseconds(200), 
-      std::bind(&RobotController::SlamExchange, this));*/
+    cloudExchangeTimer = this->create_wall_timer(std::chrono::milliseconds(200), 
+      std::bind(&CloudAdapter::SlamExchange, this));
     cloudExchangeTimer->cancel();
 
     mapSubscription = this->create_subscription<nav_msgs::msg::OccupancyGrid>("map", 
@@ -55,8 +67,8 @@ void CloudAdapter::Initalise()
   }
   else
   {
-    /*cloudExchangeTimer = this->create_wall_timer(std::chrono::milliseconds(500), 
-      std::bind(&RobotController::CloudExchange, this));*/
+    cloudExchangeTimer = this->create_wall_timer(std::chrono::milliseconds(500), 
+      std::bind(&CloudAdapter::CloudExchange, this));
     cloudExchangeTimer->cancel();
 
     // Topics
@@ -77,7 +89,7 @@ void CloudAdapter::Initalise()
             request->task_id == currentTask.task_id &&
             request->next_token == currentTask.next_token)
         {
-          //CloudAutoTaskNext();
+          CloudAutoTaskNext();
           response->success = true;
         }
         else
@@ -93,7 +105,7 @@ void CloudAdapter::Initalise()
             request->task_id == currentTask.task_id &&
             request->next_token == currentTask.next_token)
         {
-          //CloudAutoTaskAbort(RobotClientsAbortReason::Robot);
+          CloudAutoTaskAbort(RobotClientsAbortReason::Robot);
           response->success = true;
         }
         else
@@ -118,9 +130,9 @@ void CloudAdapter::Initalise()
   std::string rootCertPath = this->get_parameter("root_cert").as_string();
   std::string clientKeyPath = this->get_parameter("client_key").as_string();
   std::string clientCertPath = this->get_parameter("client_cert").as_string();
-  std::string rootCert = ReadCertificate(rootCertPath.c_str());
-  std::string clientKey = ReadCertificate(clientKeyPath.c_str());
-  std::string clientCert = ReadCertificate(clientCertPath.c_str());
+  std::string rootCert = GreetReadCertificate(rootCertPath.c_str());
+  std::string clientKey = GreetReadCertificate(clientKeyPath.c_str());
+  std::string clientCert = GreetReadCertificate(clientCertPath.c_str());
   grpc::SslCredentialsOptions sslOptions = {rootCert, clientKey, clientCert};
 
   grpcChannel = grpc::CreateChannel(serverAddress, grpc::SslCredentials(sslOptions));
@@ -129,7 +141,7 @@ void CloudAdapter::Initalise()
 }
 
 
-std::string CloudAdapter::ReadCertificate(const char *filename)
+std::string CloudAdapter::GreetReadCertificate(const char *filename)
 {
   std::ifstream file(filename, std::ios::in);
   if (file.is_open())
@@ -143,7 +155,7 @@ std::string CloudAdapter::ReadCertificate(const char *filename)
 }
 
 #ifdef __linux__ 
-std::string CloudAdapter::GetMotherBoardSerialNumber()
+std::string CloudAdapter::GreetSetMotherBoardSN()
 {
   std::ifstream file("/sys/class/dmi/id/board_serial", std::ios::in);
   std::string serialNumber;
@@ -159,12 +171,12 @@ std::string CloudAdapter::GetMotherBoardSerialNumber()
 }
 #endif
 
-void CloudAdapter::SetSystemInfo(RobotClientsSystemInfo *info)
+void CloudAdapter::GreetSetSystemInfo(RobotClientsSystemInfo *info)
 {
   hwinfo::MainBoard main_board;
   info->set_motherboard(main_board.name());
   #ifdef __linux__ 
-    info->set_motherboardserialnumber(GetMotherBoardSerialNumber());
+    info->set_motherboardserialnumber(GreetSetMotherBoardSN());
   #else
     info->set_motherboardserialnumber(main_board.serialNumber());
   #endif
@@ -192,14 +204,60 @@ void CloudAdapter::SetSystemInfo(RobotClientsSystemInfo *info)
   info->set_rammib(hwinfo::unit::bytes_to_MiB(memory.total_Bytes()));
 }
 
-void CloudAdapter::HandleError()
+void CloudAdapter::Greet(std::string mcuSN)
 {
-  cloudRetryTimer->cancel();
-  Greet(cloudErrorRetryData.mcuSerialNumber);
-  // set hasError to false when greet success
+  cloudErrorRetryData.mcuSerialNumber = mcuSN;
+  RCLCPP_INFO(this->get_logger(), "Connecting to the cloud.");
+  
+  grpc::ClientContext *context = new grpc::ClientContext();
+  auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(kGrpcWaitSec);
+  context->set_deadline(deadline);
+
+  RobotClientsGreet *request = new RobotClientsGreet();
+  RobotClientsSystemInfo *systemInfo = new RobotClientsSystemInfo();
+  GreetSetSystemInfo(systemInfo);
+  if(!mcuSN.empty())
+  {
+    systemInfo->set_mcuserialnumber(mcuSN);
+  }
+  request->set_allocated_systeminfo(systemInfo);
+
+  RobotClientsGreetResponse *response = new RobotClientsGreetResponse();
+  grpcStub->async()->Greet(context, request, response, [context, request, response, this](grpc::Status status)
+  {
+    if (status.ok()) 
+    {
+      accessToken = grpc::AccessTokenCredentials(response->accesstoken());
+      if (grpcRealtimeStub == nullptr)
+      {
+        grpcRealtimeStub = RobotClientsService::NewStub(grpcChannel);
+      }
+      if (isSlam)
+      {
+        RCLCPP_INFO(this->get_logger(), "Connected to the cloud, start SLAM data exchange.");
+        exchangeStream = std::make_unique<SlamExchangeType>(grpcRealtimeStub.get(), accessToken, cloudSignals);
+      }
+      else
+      {
+        RCLCPP_INFO(this->get_logger(), "Connected to the cloud, start data exchange.");
+        robotStatus = std::get<RobotStatus::Offline>(robotStatus).connected();
+        exchangeStream = std::make_unique<CloudExchangeType>(grpcRealtimeStub.get(), accessToken, cloudSignals);
+      }
+      // Start the timer to exchange data
+      cloudExchangeTimer->reset();
+    }
+    else
+    {
+      RCLCPP_ERROR(this->get_logger(), "Unable to connect the cloud, will try again.");
+      OnErrorOccured();
+    }
+    delete context;
+    delete request;
+    delete response;
+  });
 }
 
-void CloudAdapter::UpdateExchange()
+void CloudAdapter::ExchangeProcessData()
 {
   if (isSlam)
   {
@@ -245,68 +303,17 @@ void CloudAdapter::UpdateExchange()
   exchangeRobotData.set_pausetaskassignment(pauseTaskAssignment);
 }
 
-void CloudAdapter::Greet(std::string mcuSN)
-{
-  cloudErrorRetryData.mcuSerialNumber = mcuSN;
-  RCLCPP_INFO(this->get_logger(), "Connecting to the cloud.");
-  
-  grpc::ClientContext *context = new grpc::ClientContext();
-  auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(kGrpcWaitSec);
-  context->set_deadline(deadline);
-
-  RobotClientsGreet *request = new RobotClientsGreet();
-  RobotClientsSystemInfo *systemInfo = new RobotClientsSystemInfo();
-  SetSystemInfo(systemInfo);
-  if(!mcuSN.empty())
-  {
-    systemInfo->set_mcuserialnumber(mcuSN);
-  }
-  request->set_allocated_systeminfo(systemInfo);
-
-  RobotClientsGreetResponse *response = new RobotClientsGreetResponse();
-  grpcStub->async()->Greet(context, request, response, [context, request, response, this](grpc::Status status)
-  {
-    if (status.ok()) 
-    {
-      accessToken = grpc::AccessTokenCredentials(response->accesstoken());
-      if (grpcRealtimeStub == nullptr)
-      {
-        grpcRealtimeStub = RobotClientsService::NewStub(grpcChannel);
-      }
-      /*
-      if (isCloudSlam)
-      {
-        RCLCPP_INFO(logger_, "Connected to the cloud, start SLAM data exchange.");
-        slamExchangeStream = std::make_unique<SlamExchangeStream>(grpcRealtimeStub.get(), accessToken, cloudSignals);
-      }
-      else
-      {
-        RCLCPP_INFO(logger_, "Connected to the cloud, start data exchange.");
-        cloudSignals->Connected();
-        cloudExchangeStream = std::make_unique<CloudExchangeStream>(grpcRealtimeStub.get(), accessToken, cloudSignals);
-      }*/
-      // Start the timer to exchange data
-      //cloudSignals->NextExchange();
-    }
-    else
-    {
-      RCLCPP_ERROR(this->get_logger(), "Unable to connect the cloud, will try again.");
-      OnErrorOccured();
-    }
-    delete context;
-    delete request;
-    delete response;
-  });
-}
-
 void CloudAdapter::CloudExchange()
 {
   if (!cloudExchangeTimer->is_canceled())
     cloudExchangeTimer->cancel();
 
-  UpdateExchange();
+  ExchangeProcessData();
 
-  //robotControllerSignals->CloudExchange(exchangeRobotData, exchangeNextToken, exchangeAbortToken);
+  if (exchangeStream != nullptr)
+  {
+    exchangeStream->SendMessage(exchangeRobotData, exchangeNextToken, exchangeAbortToken);
+  }
 
   // Clear the token to indicate that the exchange is done
   exchangeNextToken.Clear();
@@ -319,7 +326,7 @@ void CloudAdapter::SlamExchange()
   if (!cloudExchangeTimer->is_canceled())
   cloudExchangeTimer->cancel();
 
-  UpdateExchange();
+  ExchangeProcessData();
 
   exchangeMapData.Clear();
   if (mapHasUpdated)
@@ -327,7 +334,11 @@ void CloudAdapter::SlamExchange()
     exchangeMapData.CopyFrom(mapData);
     mapHasUpdated = false;
   }
-  //robotControllerSignals->SlamExchange(exchangeSlamStatus, exchangeRobotData, exchangeMapData);
+  
+  if (exchangeStream != nullptr)
+  {
+    exchangeStream->SendMessage(exchangeSlamStatus, exchangeRobotData, exchangeMapData);
+  }
   // Don't reset the slamExchangeTimer here
 }
 
@@ -380,34 +391,6 @@ void CloudAdapter::OnSlamMapUpdate(const nav_msgs::msg::OccupancyGrid &msg)
   mapHasUpdated = true;
 }
 
-void CloudAdapter::TryExitCriticalStatus()
-{
-  // Ensure no unreslovable status
-  if (criticalStatus.hardwareemergencystop() == true ||
-        criticalStatus.batterylow_size() > 0 ||
-        criticalStatus.motordamaged_size() > 0)
-  {
-    RCLCPP_ERROR(this->get_logger(), "Unresolvable critical status, will not exit.");
-    return;
-  }
-  //robotStatus.ExitCritical();
-}
-
-void CloudAdapter::OnErrorOccured()
-{
-  if (cloudRetryTimer->is_canceled())
-  {
-    RCLCPP_ERROR(this->get_logger(), "Cloud error occured.");
-    cloudRetryTimer->reset();
-  }
-}
-
-
-void CloudAdapter::OnConnectedCloud()
-{
-  //robotStatus.ConnnectedCloud();
-}
-
 void CloudAdapter::CloudAutoTaskNext()
 {
   if (!currentTask.next_token.empty())
@@ -424,7 +407,14 @@ void CloudAdapter::CloudAutoTaskAbort(RobotClientsAbortReason reason)
   if (!currentTask.next_token.empty())
   {
     // Setup the next token for the exchange
-    //robotStatus.TaskAborting();
+    if (auto s = std::get_if<RobotStatus::Running>(&robotStatus))
+    {
+      robotStatus = s->AbortTask();
+    }
+    else if (auto s = std::get_if<RobotStatus::Stuck>(&robotStatus))
+    {
+      robotStatus = s->AbortTask();
+    }
     RCLCPP_INFO(this->get_logger(), "AutoTask will be aborted.");
     exchangeAbortToken.set_taskid(currentTask.task_id);
     exchangeAbortToken.set_nexttoken(currentTask.next_token);
@@ -432,7 +422,7 @@ void CloudAdapter::CloudAutoTaskAbort(RobotClientsAbortReason reason)
   }
 }
 
-void CloudAdapter::OnNextCloudChange()
+void CloudAdapter::OnNextExchange()
 {
   cloudExchangeTimer->reset();
 }
@@ -452,13 +442,20 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
     if (currentTask.task_progress_id == 3)
     {
       RCLCPP_INFO(this->get_logger(), "AutoTask Id: %d completed.", task.taskid());
-      //robotStatus.TaskCompleted();
+      if (auto s = std::get_if<RobotStatus::Running>(&robotStatus))
+      {
+        robotStatus = s->TaskCompleted();
+      }
+      else if (auto s = std::get_if<RobotStatus::Stuck>(&robotStatus))
+      {
+        robotStatus = s->TaskCompleted();
+      }
     }
     else if (currentTask.task_progress_id == 4)
     {
       RCLCPP_INFO(this->get_logger(), "AutoTask Id: %d aborted.", task.taskid());
-      //robotControllerSignals->NavigationAbort();
-      //robotStatus.TaskAborted();
+      navigation->Abort();
+      robotStatus = std::get<RobotStatus::Aborting>(robotStatus).TaskAborted();
     }
     else
     {
@@ -471,7 +468,14 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
         navigationProgress = 0;
         OnNavigationStart();
       }
-      //robotStatus.TaskAssigned();
+      if (auto s = std::get_if<RobotStatus::Idle>(&robotStatus))
+      {
+        robotStatus = s->TaskAssigned();
+      }
+      else if (auto s = std::get_if<RobotStatus::Aborting>(&robotStatus))
+      {
+        robotStatus = s->TaskAssigned();
+      }
     }
   }
 
@@ -487,13 +491,13 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
     {
       RCLCPP_INFO(this->get_logger(), "Enabling software emergency stop");
       criticalStatus.set_softwareemergencystop(true);
-      //robotStatus.EnterCritical();
+      RobotStatus::CriticalManager::Enter(robotStatus);
     }
     if (commands.has_softwareemergencystopdisable() && commands.softwareemergencystopdisable() == true)
     {
       RCLCPP_INFO(this->get_logger(), "Disabling software emergency stop");
       criticalStatus.set_softwareemergencystop(false);
-      //TryExitCriticalStatus();
+      TryExitCriticalStatus();
     }
     if (commands.has_pausetaskassignmentenable() && commands.pausetaskassignmentenable() == true)
     {
@@ -505,14 +509,9 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
     {
       RCLCPP_INFO(this->get_logger(), "Resuming task Assignment");
       pauseTaskAssignment = false;
-      //robotStatus.ResumeTaskAssignment();
+      robotStatus = std::get<RobotStatus::Paused>(robotStatus).ResumeTaskAssignment();
     }
   }
-}
-
-void CloudAdapter::OnNextSlamExchange()
-{
-  cloudExchangeTimer->reset();
 }
 
 void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
@@ -536,30 +535,30 @@ void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
     pose.pose.position.y = y;
     pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(rotation);
     poses.push_back(pose);
-    //robotControllerSignals->NavigationStart(poses);
+    navigation->Start(poses);
     exchangeSlamStatus = RobotClientsSlamStatus::SlamRunning;
   }
   if (respond->has_abortgoal() && respond->abortgoal() == true)
   {
     RCLCPP_INFO(this->get_logger(), "Aborting the current goal");
-    //robotControllerSignals->NavigationAbort();
+    navigation->Abort();
   }
   if (respond->has_softwareemergencystopenable() && respond->softwareemergencystopenable() == true)
   {
     RCLCPP_INFO(this->get_logger(), "Enabling software emergency stop");
     criticalStatus.set_softwareemergencystop(true);
-    //robotStatus.EnterCritical();
+    RobotStatus::CriticalManager::Enter(robotStatus);
   }
   if (respond->has_softwareemergencystopdisable() && respond->softwareemergencystopdisable() == true)
   {
     RCLCPP_INFO(this->get_logger(), "Disabling software emergency stop");
     criticalStatus.set_softwareemergencystop(false);
-    //TryExitCriticalStatus();
+    TryExitCriticalStatus();
   }
   if (respond->has_savemap() && respond->savemap() == true)
   {
     RCLCPP_INFO(this->get_logger(), "Saving the map");
-    //robotControllerSignals->SaveMap();
+    map->Save();
   }
   if (respond->has_refreshmap() && respond->refreshmap() == true)
   {
@@ -569,16 +568,16 @@ void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
   if (respond->has_abortslam() && respond->abortslam() == true)
   {
     RCLCPP_INFO(this->get_logger(), "Aborting the current SLAM");
-    //robotControllerSignals->NavigationAbort();
-    //robotControllerSignals->Shutdown();
+    navigation->Abort();
+    // Shutdown();
   }
   if (respond->has_completeslam() && respond->completeslam() == true)
   {
-    //robotControllerSignals->NavigationAbort();
+    navigation->Abort();
     RCLCPP_INFO(this->get_logger(), "Completing the current SLAM and saving the map with 5 seconds blocking");
-    //robotControllerSignals->SaveMap();
+    map->Save();
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    //robotControllerSignals->Shutdown();
+    // Shutdown();
   }
 }
 
@@ -599,12 +598,12 @@ void CloudAdapter::OnNavigationStart()
       pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(waypoint.rotation());
       poses.push_back(pose);
     }
-    //robotControllerSignals->NavigationStart(poses);
+    navigation->Start(poses);
     navigationProgress++;
   }
   else
   {
-    //CloudAutoTaskNext();
+    CloudAutoTaskNext();
   }
 }
 
@@ -624,7 +623,7 @@ void CloudAdapter::OnNavigationStuck()
 {
   if (!isSlam) 
   {
-    //robotStatus.NavigationStuck();
+    robotStatus = std::get<RobotStatus::Running>(robotStatus).NavigationStuck();
   }
   // Do nothing is SLAM
 }
@@ -633,7 +632,7 @@ void CloudAdapter::OnNavigationCleared()
 {
   if (!isSlam) 
   {
-    //robotStatus.NavigationCleared();
+    robotStatus = std::get<RobotStatus::Stuck>(robotStatus).Cleared();
   }
   // Do nothing is SLAM
 }
@@ -654,7 +653,36 @@ void CloudAdapter::OnNavigationAborted()
   }
   else
   {
-    //CloudAutoTaskAbort(RobotClientsAbortReason::NavStack);
+    CloudAutoTaskAbort(RobotClientsAbortReason::NavStack);
+  }
+}
+
+void CloudAdapter::TryExitCriticalStatus()
+{
+  // Ensure no unreslovable status
+  if (criticalStatus.hardwareemergencystop() == true ||
+        criticalStatus.batterylow_size() > 0 ||
+        criticalStatus.motordamaged_size() > 0)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Unresolvable critical status, will not exit.");
+    return;
+  }
+  robotStatus = RobotStatus::CriticalManager::Exit();
+}
+
+void CloudAdapter::HandleError()
+{
+  cloudRetryTimer->cancel();
+  Greet(cloudErrorRetryData.mcuSerialNumber);
+  // set hasError to false when greet success
+}
+
+void CloudAdapter::OnErrorOccured()
+{
+  if (cloudRetryTimer->is_canceled())
+  {
+    RCLCPP_ERROR(this->get_logger(), "Cloud error occured.");
+    cloudRetryTimer->reset();
   }
 }
 
