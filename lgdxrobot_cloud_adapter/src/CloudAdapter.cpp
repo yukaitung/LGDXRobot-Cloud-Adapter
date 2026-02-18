@@ -450,12 +450,20 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
       {
         robotStatus = s->TaskCompleted();
       }
+      if (pauseTaskAssignment)
+      {
+        robotStatus = std::get<RobotStatus::Idle>(robotStatus).PauseTaskAssignment();
+      }
     }
     else if (currentTask.task_progress_id == 4)
     {
       RCLCPP_INFO(this->get_logger(), "AutoTask Id: %d aborted.", task.taskid());
       navigation->Abort();
       robotStatus = std::get<RobotStatus::Aborting>(robotStatus).TaskAborted();
+      if (pauseTaskAssignment)
+      {
+        robotStatus = std::get<RobotStatus::Idle>(robotStatus).PauseTaskAssignment();
+      }
     }
     else
     {
@@ -503,7 +511,11 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
     {
       RCLCPP_INFO(this->get_logger(), "Pausing task Assignment");
       pauseTaskAssignment = true;
-      //robotStatus.PauseTaskAssignment();
+      if (auto s = std::get_if<RobotStatus::Idle>(&robotStatus))
+      {
+        robotStatus = s->PauseTaskAssignment();
+      }
+      // Pause the task after completion / abort
     }
     if (commands.has_pausetaskassignmentdisable() && commands.pausetaskassignmentdisable() == true)
     {
@@ -569,7 +581,7 @@ void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
   {
     RCLCPP_INFO(this->get_logger(), "Aborting the current SLAM");
     navigation->Abort();
-    // Shutdown();
+    Shutdown();
   }
   if (respond->has_completeslam() && respond->completeslam() == true)
   {
@@ -577,7 +589,7 @@ void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
     RCLCPP_INFO(this->get_logger(), "Completing the current SLAM and saving the map with 5 seconds blocking");
     map->Save();
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    // Shutdown();
+    Shutdown();
   }
 }
 
@@ -691,6 +703,12 @@ void CloudAdapter::Shutdown()
   if (cloudExchangeTimer != nullptr && !cloudExchangeTimer->is_canceled())
   {
     cloudExchangeTimer->cancel();
+  }
+
+  if (exchangeStream != nullptr)
+  {
+    exchangeStream->Shutdown();
+    exchangeStream->AwaitCompletion();
   }
 }
 
