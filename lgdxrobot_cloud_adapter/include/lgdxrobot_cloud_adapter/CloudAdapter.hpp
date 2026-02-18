@@ -8,8 +8,15 @@
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
+#include "lgdxrobot_cloud_msgs/msg/auto_task.hpp"
+#include "lgdxrobot_cloud_msgs/msg/robot_data.hpp"
+#include "lgdxrobot_cloud_msgs/srv/auto_task_abort.hpp"
+#include "lgdxrobot_cloud_msgs/srv/auto_task_next.hpp"
+#include "nav_msgs/msg/occupancy_grid.hpp"
 #include "proto/RobotClientsService.grpc.pb.h"
 #include "rclcpp/rclcpp.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 #include "RobotStatus.hpp"
 
 namespace LGDXRobotCloud
@@ -25,11 +32,47 @@ struct CloudErrorRetryData
 class CloudAdapter : public rclcpp::Node
 {
   private:
-  const int kGrpcWaitSec = 5;
+    const int kGrpcWaitSec = 5;
 
+    // ROS
     rclcpp::TimerBase::SharedPtr timer;
     rclcpp::TimerBase::SharedPtr cloudRetryTimer;
+    rclcpp::TimerBase::SharedPtr autoTaskPublisherTimer;
+    rclcpp::TimerBase::SharedPtr cloudExchangeTimer;
+    rclcpp::TimerBase::SharedPtr robotDataPublisherTimer;
+    rclcpp::Publisher<lgdxrobot_cloud_msgs::msg::AutoTask>::SharedPtr autoTaskPublisher;
+    rclcpp::Publisher<lgdxrobot_cloud_msgs::msg::RobotData>::SharedPtr robotDataPublisher;
+    rclcpp::Service<lgdxrobot_cloud_msgs::srv::AutoTaskNext>::SharedPtr autoTaskNextService;
+    rclcpp::Service<lgdxrobot_cloud_msgs::srv::AutoTaskAbort>::SharedPtr autoTaskAbortService;
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr mapSubscription;
+    std::shared_ptr<tf2_ros::TransformListener> tfListener{nullptr};
+    std::unique_ptr<tf2_ros::Buffer> tfBuffer;
+
+    // Robot Data
+    bool isSlam = false;
+    bool pauseTaskAssignment = false;
+    lgdxrobot_cloud_msgs::msg::RobotData robotData;
+    std::shared_ptr<RobotClientsAutoTaskNavProgress> navProgress;
+    std::vector<double> batteries = {0.0, 0.0};
+    RobotClientsRobotCriticalStatus criticalStatus;
+    // Robot Data: SLAM
+    bool mapHasUpdated = false;
+    bool overwriteGoal = false;
+    RobotClientsMapData mapData;
+
+    // Exchange
+    RobotClientsData exchangeRobotData;
+    RobotClientsNextToken exchangeNextToken;
+    RobotClientsAbortToken exchangeAbortToken;
+    RobotClientsSlamStatus exchangeSlamStatus = RobotClientsSlamStatus::SlamIdle;
+    RobotClientsMapData exchangeMapData;
+
+    // AutoTask
+    lgdxrobot_cloud_msgs::msg::AutoTask currentTask;
+    std::vector<RobotClientsPath> navigationPaths;
+    std::size_t navigationProgress = 0;
     
+    // Cloud
     std::shared_ptr<grpc::Channel> grpcChannel;
     std::unique_ptr<RobotClientsService::Stub> grpcRealtimeStub;
     std::unique_ptr<RobotClientsService::Stub> grpcStub;

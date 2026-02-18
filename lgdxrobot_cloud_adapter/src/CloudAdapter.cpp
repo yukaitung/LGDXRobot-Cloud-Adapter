@@ -20,24 +20,86 @@ void CloudAdapter::Initalise()
 {
   timer->cancel();
 
-  RCLCPP_INFO(this->get_logger(), "Initialising Cloud Adapter");
-
   // Parameters
   auto cloudSlamEnableParam = rcl_interfaces::msg::ParameterDescriptor{};
-  cloudSlamEnableParam.description = "Enable LGDXRobot Cloud SLAM Mode.";
-  this->declare_parameter("cloud_slam_enable", false, cloudSlamEnableParam);
+  cloudSlamEnableParam.description = "Enable SLAM Mode.";
+  this->declare_parameter("slam_enable", false, cloudSlamEnableParam);
   auto cloudAddressParam = rcl_interfaces::msg::ParameterDescriptor{};
   cloudAddressParam.description = "Address of LGDXRobot2 Cloud.";
-  this->declare_parameter("cloud_address", "", cloudAddressParam);
+  this->declare_parameter("address", "", cloudAddressParam);
   auto cloudRootCertParam = rcl_interfaces::msg::ParameterDescriptor{};
-  cloudRootCertParam.description = "Path to server root certificate, required in LGDXRobot2 Cloud.";
-  this->declare_parameter("cloud_root_cert", "", cloudRootCertParam);
+  cloudRootCertParam.description = "Path to server root certificate.";
+  this->declare_parameter("root_cert", "", cloudRootCertParam);
   auto cloudClientKeyParam = rcl_interfaces::msg::ParameterDescriptor{};
-  cloudClientKeyParam.description = "Path to client's private key, required in LGDXRobot2 Cloud.";
-  this->declare_parameter("cloud_client_key", "", cloudClientKeyParam);
+  cloudClientKeyParam.description = "Path to client's private key.";
+  this->declare_parameter("client_key", "", cloudClientKeyParam);
   auto cloudClientCertParam = rcl_interfaces::msg::ParameterDescriptor{};
-  cloudClientCertParam.description = "Path to client's certificate chain, required in LGDXRobot2 Cloud.";
-  this->declare_parameter("cloud_client_cert", "", cloudClientCertParam);
+  cloudClientCertParam.description = "Path to client's certificate chain.";
+  this->declare_parameter("client_cert", "", cloudClientCertParam);
+
+  // ROS
+  isSlam = this->get_parameter("cloud_slam_enable").as_bool();
+  tfBuffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
+  if (isSlam)
+  {
+    /*cloudExchangeTimer = this->create_wall_timer(std::chrono::milliseconds(200), 
+      std::bind(&RobotController::SlamExchange, this));*/
+    cloudExchangeTimer->cancel();
+
+    /*mapSubscription = this->create_subscription<nav_msgs::msg::OccupancyGrid>("map", 
+      rclcpp::SensorDataQoS().reliable(), 
+      std::bind(&RobotController::OnSlamMapUpdate, this, std::placeholders::_1));*/
+  }
+  else
+  {
+    /*cloudExchangeTimer = this->create_wall_timer(std::chrono::milliseconds(500), 
+      std::bind(&RobotController::CloudExchange, this));*/
+    cloudExchangeTimer->cancel();
+
+    // Topics
+    autoTaskPublisher = this->create_publisher<lgdxrobot_cloud_msgs::msg::AutoTask>("cloud/auto_task", 
+      rclcpp::SensorDataQoS().reliable());
+    autoTaskPublisherTimer = this->create_wall_timer(std::chrono::milliseconds(100), 
+      [this]()
+      {
+        autoTaskPublisher->publish(currentTask);
+      });
+
+    // Services
+    autoTaskNextService = this->create_service<lgdxrobot_cloud_msgs::srv::AutoTaskNext>("auto_task_next",
+      [this](const std::shared_ptr<lgdxrobot_cloud_msgs::srv::AutoTaskNext::Request> request,
+        std::shared_ptr<lgdxrobot_cloud_msgs::srv::AutoTaskNext::Response> response) 
+      {
+        if (!currentTask.next_token.empty() && 
+            request->task_id == currentTask.task_id &&
+            request->next_token == currentTask.next_token)
+        {
+          //CloudAutoTaskNext();
+          response->success = true;
+        }
+        else
+        {
+          response->success = false;
+        }
+      });
+    autoTaskAbortService = this->create_service<lgdxrobot_cloud_msgs::srv::AutoTaskAbort>("auto_task_abort",
+      [this](const std::shared_ptr<lgdxrobot_cloud_msgs::srv::AutoTaskAbort::Request> request,
+        std::shared_ptr<lgdxrobot_cloud_msgs::srv::AutoTaskAbort::Response> response)
+      {
+        if (!currentTask.next_token.empty() && 
+            request->task_id == currentTask.task_id &&
+            request->next_token == currentTask.next_token)
+        {
+          //CloudAutoTaskAbort(RobotClientsAbortReason::Robot);
+          response->success = true;
+        }
+        else
+        {
+          response->success = false;
+        }
+      });
+  }
 
   // Cloud Initalise
   std::random_device rd;
@@ -50,10 +112,10 @@ void CloudAdapter::Initalise()
   cloudRetryTimer->cancel();
   
   // Connect to Cloud
-  std::string serverAddress = this->get_parameter("cloud_address").as_string();
-  std::string rootCertPath = this->get_parameter("cloud_root_cert").as_string();
-  std::string clientKeyPath = this->get_parameter("cloud_client_key").as_string();
-  std::string clientCertPath = this->get_parameter("cloud_client_cert").as_string();
+  std::string serverAddress = this->get_parameter("address").as_string();
+  std::string rootCertPath = this->get_parameter("root_cert").as_string();
+  std::string clientKeyPath = this->get_parameter("client_key").as_string();
+  std::string clientCertPath = this->get_parameter("client_cert").as_string();
   std::string rootCert = ReadCertificate(rootCertPath.c_str());
   std::string clientKey = ReadCertificate(clientKeyPath.c_str());
   std::string clientCert = ReadCertificate(clientCertPath.c_str());
