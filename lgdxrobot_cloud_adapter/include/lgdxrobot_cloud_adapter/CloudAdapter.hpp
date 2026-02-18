@@ -1,14 +1,13 @@
 #ifndef CLOUD_ADAPTER_HPP
 #define CLOUD_ADAPTER_HPP
 
+#include <string>
+
 #include "grpc/grpc.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
-
-#include <string>
-
 #include "proto/RobotClientsService.grpc.pb.h"
 #include "rclcpp/rclcpp.hpp"
 #include "RobotStatus.hpp"

@@ -39,6 +39,7 @@ protobuf_generate(TARGET ${PROTO_NAME} LANGUAGE grpc GENERATE_EXTENSIONS .grpc.p
 #
 add_subdirectory(../third_party/hwinfo hwinfo)
 find_package(ament_cmake REQUIRED)
+find_package(Boost REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 
@@ -46,12 +47,16 @@ include_directories(include)
 
 add_library(lgdxrobot_cloud_component SHARED
   src/CloudAdapter.cpp
+  src/CloudExchangeStream.cpp
+  src/Exchange.cpp
   src/RobotStatus.cpp
+  src/SlamExchangeStream.cpp
 )
 target_link_libraries(lgdxrobot_cloud_component
   ${PROTO_NAME}
   "${cpp_typesupport_target}"
   hwinfo
+  Boost::headers
 )
 ament_target_dependencies(lgdxrobot_cloud_component
   rclcpp
