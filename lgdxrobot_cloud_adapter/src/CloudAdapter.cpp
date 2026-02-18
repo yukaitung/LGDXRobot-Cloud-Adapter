@@ -52,6 +52,23 @@ void CloudAdapter::Initalise()
     map = std::make_unique<Map>(shared_from_this());
   }
 
+  navigationSignals->Done.connect(boost::bind(&CloudAdapter::OnNavigationDone, this));
+  navigationSignals->Stuck.connect(boost::bind(&CloudAdapter::OnNavigationStuck, this));
+  navigationSignals->Cleared.connect(boost::bind(&CloudAdapter::OnNavigationCleared, this));
+  navigationSignals->Abort.connect(boost::bind(&CloudAdapter::OnNavigationAborted, this));
+
+  cloudSignals->StreamError.connect(boost::bind(&CloudAdapter::OnErrorOccured, this));
+  if (isSlam)
+  {
+    cloudSignals->NextExchange.connect(boost::bind(&CloudAdapter::OnNextExchange, this));
+    cloudSignals->HandleSlamExchange.connect(boost::bind(&CloudAdapter::OnHandleSlamExchange, this, boost::placeholders::_1));
+  }
+  else
+  {
+    cloudSignals->NextExchange.connect(boost::bind(&CloudAdapter::OnNextExchange, this));
+    cloudSignals->HandleExchange.connect(boost::bind(&CloudAdapter::OnHandleClouldExchange, this, boost::placeholders::_1));
+  }
+
   // ROS
   tfBuffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
@@ -138,6 +155,16 @@ void CloudAdapter::Initalise()
   grpcChannel = grpc::CreateChannel(serverAddress, grpc::SslCredentials(sslOptions));
   grpcStub = RobotClientsService::NewStub(grpcChannel);
   accessToken = grpc::AccessTokenCredentials("");
+
+  bool needMcuSn = this->get_parameter("need_mcu_sn").as_bool();
+  if (needMcuSn)
+  {
+    // Require MCU Serial Number before connecting to the cloud
+  }
+  else
+  {
+    Greet("");
+  }
 }
 
 
@@ -474,7 +501,7 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
         navigationPaths.clear();
         navigationPaths.assign(task.paths().begin(), task.paths().end());
         navigationProgress = 0;
-        OnNavigationStart();
+        NavigationStart();
       }
       if (auto s = std::get_if<RobotStatus::Idle>(&robotStatus))
       {
@@ -593,7 +620,7 @@ void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
   }
 }
 
-void CloudAdapter::OnNavigationStart()
+void CloudAdapter::NavigationStart()
 {
   if (navigationProgress < navigationPaths.size())
   {
@@ -627,7 +654,7 @@ void CloudAdapter::OnNavigationDone()
   }
   else
   {
-    OnNavigationStart();
+    NavigationStart();
   }
 }
 

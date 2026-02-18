@@ -111,10 +111,9 @@ class CloudAdapter : public rclcpp::Node
     void CloudAutoTaskAbort(RobotClientsAbortReason reason);
     void OnNextExchange();
     void OnHandleClouldExchange(const RobotClientsResponse *response);
-    void OnNextSlamExchange();
     void OnHandleSlamExchange(const RobotClientsSlamCommands *response);
 
-    void OnNavigationStart();
+    void NavigationStart();
     void OnNavigationDone();
     void OnNavigationAborted();
     void OnNavigationStuck();
