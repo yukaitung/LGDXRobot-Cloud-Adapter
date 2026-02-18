@@ -65,7 +65,7 @@ class CloudAdapter : public rclcpp::Node
     std::unique_ptr<tf2_ros::Buffer> tfBuffer;
 
     // Robot Data
-    RobotStatus::StateMachine robotStatus = RobotStatus::Offline();
+    RobotStatus robotStatus;
     bool hasMcuSn = false;
     bool isSlam = false;
     bool pauseTaskAssignment = false;

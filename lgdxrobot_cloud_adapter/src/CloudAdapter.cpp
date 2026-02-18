@@ -97,7 +97,7 @@ void CloudAdapter::Initalise()
         if (msg->hardware_emergency_stop_enabled)
         {
           criticalStatus.set_hardwareemergencystop(true);
-          RobotStatus::CriticalManager::Enter(robotStatus);
+          robotStatus.EnterCritical();
         }
         else
         {
@@ -316,7 +316,7 @@ void CloudAdapter::Greet(std::string mcuSN)
       else
       {
         RCLCPP_INFO(this->get_logger(), "Connected to the cloud, start data exchange.");
-        robotStatus = std::get<RobotStatus::Offline>(robotStatus).connected();
+        robotStatus.ConnnectedCloud();
         exchangeStream = std::make_unique<CloudExchangeType>(grpcRealtimeStub.get(), accessToken, cloudSignals);
       }
       // Start the timer to exchange data
@@ -337,11 +337,11 @@ void CloudAdapter::ExchangeProcessData()
 {
   if (isSlam)
   {
-    exchangeRobotData.set_robotstatus(RobotStatus::GetStatus(robotStatus) == RobotClientsRobotStatus::Critical ? RobotClientsRobotStatus::Critical : RobotClientsRobotStatus::Paused);
+    exchangeRobotData.set_robotstatus(robotStatus.GetStatus() == RobotClientsRobotStatus::Critical ? RobotClientsRobotStatus::Critical : RobotClientsRobotStatus::Paused);
   }
   else
   {
-    exchangeRobotData.set_robotstatus(RobotStatus::GetStatus(robotStatus));
+    exchangeRobotData.set_robotstatus(robotStatus.GetStatus());
   }
   exchangeRobotData.mutable_criticalstatus()->CopyFrom(criticalStatus);
   auto exchangeBatteries = exchangeRobotData.mutable_batteries();
@@ -483,14 +483,7 @@ void CloudAdapter::CloudAutoTaskAbort(RobotClientsAbortReason reason)
   if (!currentTask.next_token.empty())
   {
     // Setup the next token for the exchange
-    if (auto s = std::get_if<RobotStatus::Running>(&robotStatus))
-    {
-      robotStatus = s->AbortTask();
-    }
-    else if (auto s = std::get_if<RobotStatus::Stuck>(&robotStatus))
-    {
-      robotStatus = s->AbortTask();
-    }
+    robotStatus.TaskAborting();
     RCLCPP_INFO(this->get_logger(), "AutoTask will be aborted.");
     exchangeAbortToken.set_taskid(currentTask.task_id);
     exchangeAbortToken.set_nexttoken(currentTask.next_token);
@@ -518,28 +511,13 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
     if (currentTask.task_progress_id == 3)
     {
       RCLCPP_INFO(this->get_logger(), "AutoTask Id: %d completed.", task.taskid());
-      if (auto s = std::get_if<RobotStatus::Running>(&robotStatus))
-      {
-        robotStatus = s->TaskCompleted();
-      }
-      else if (auto s = std::get_if<RobotStatus::Stuck>(&robotStatus))
-      {
-        robotStatus = s->TaskCompleted();
-      }
-      if (pauseTaskAssignment)
-      {
-        robotStatus = std::get<RobotStatus::Idle>(robotStatus).PauseTaskAssignment();
-      }
+      robotStatus.TaskCompleted();
     }
     else if (currentTask.task_progress_id == 4)
     {
       RCLCPP_INFO(this->get_logger(), "AutoTask Id: %d aborted.", task.taskid());
       navigation->Abort();
-      robotStatus = std::get<RobotStatus::Aborting>(robotStatus).TaskAborted();
-      if (pauseTaskAssignment)
-      {
-        robotStatus = std::get<RobotStatus::Idle>(robotStatus).PauseTaskAssignment();
-      }
+      robotStatus.TaskAborted();
     }
     else
     {
@@ -552,14 +530,7 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
         navigationProgress = 0;
         NavigationStart();
       }
-      if (auto s = std::get_if<RobotStatus::Idle>(&robotStatus))
-      {
-        robotStatus = s->TaskAssigned();
-      }
-      else if (auto s = std::get_if<RobotStatus::Aborting>(&robotStatus))
-      {
-        robotStatus = s->TaskAssigned();
-      }
+      robotStatus.TaskAssigned();
     }
   }
 
@@ -575,7 +546,7 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
     {
       RCLCPP_INFO(this->get_logger(), "Enabling software emergency stop");
       criticalStatus.set_softwareemergencystop(true);
-      RobotStatus::CriticalManager::Enter(robotStatus);
+      robotStatus.EnterCritical();
     }
     if (commands.has_softwareemergencystopdisable() && commands.softwareemergencystopdisable() == true)
     {
@@ -587,17 +558,13 @@ void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
     {
       RCLCPP_INFO(this->get_logger(), "Pausing task Assignment");
       pauseTaskAssignment = true;
-      if (auto s = std::get_if<RobotStatus::Idle>(&robotStatus))
-      {
-        robotStatus = s->PauseTaskAssignment();
-      }
-      // Pause the task after completion / abort
+      robotStatus.PauseTaskAssignment();
     }
     if (commands.has_pausetaskassignmentdisable() && commands.pausetaskassignmentdisable() == true)
     {
       RCLCPP_INFO(this->get_logger(), "Resuming task Assignment");
       pauseTaskAssignment = false;
-      robotStatus = std::get<RobotStatus::Paused>(robotStatus).ResumeTaskAssignment();
+      robotStatus.ResumeTaskAssignment();
     }
   }
 }
@@ -635,7 +602,7 @@ void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
   {
     RCLCPP_INFO(this->get_logger(), "Enabling software emergency stop");
     criticalStatus.set_softwareemergencystop(true);
-    RobotStatus::CriticalManager::Enter(robotStatus);
+    robotStatus.EnterCritical();
   }
   if (respond->has_softwareemergencystopdisable() && respond->softwareemergencystopdisable() == true)
   {
@@ -711,7 +678,7 @@ void CloudAdapter::OnNavigationStuck()
 {
   if (!isSlam) 
   {
-    robotStatus = std::get<RobotStatus::Running>(robotStatus).NavigationStuck();
+    robotStatus.NavigationStuck();
   }
   // Do nothing is SLAM
 }
@@ -720,7 +687,7 @@ void CloudAdapter::OnNavigationCleared()
 {
   if (!isSlam) 
   {
-    robotStatus = std::get<RobotStatus::Stuck>(robotStatus).Cleared();
+    robotStatus.NavigationCleared();
   }
   // Do nothing is SLAM
 }
@@ -753,7 +720,7 @@ void CloudAdapter::TryExitCriticalStatus()
     RCLCPP_ERROR(this->get_logger(), "Unresolvable critical status, will not exit.");
     return;
   }
-  robotStatus = RobotStatus::CriticalManager::Exit();
+  robotStatus.ExitCritical();
 }
 
 void CloudAdapter::HandleError()

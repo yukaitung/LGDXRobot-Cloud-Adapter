@@ -1,101 +1,114 @@
 #include "lgdxrobot_cloud_adapter/RobotStatus.hpp"
 
-// Idle State
-
-RobotStatus::Charging RobotStatus::Idle::StartCharging()
+RobotClientsRobotStatus RobotStatus::GetStatus()
 {
-  return RobotStatus::Charging();
+  return robotStatus;
 }
 
-RobotStatus::Running RobotStatus::Idle::TaskAssigned()
+void RobotStatus::ChangeStatus(RobotClientsRobotStatus newState)
 {
-  return RobotStatus::Running();
-}
-
-RobotStatus::Paused RobotStatus::Idle::PauseTaskAssignment()
-{
-  return RobotStatus::Paused();
-}
-
-// Running State
-
-RobotStatus::Idle RobotStatus::Running::TaskCompleted()
-{
-  return RobotStatus::Idle();
-}
-
-RobotStatus::Stuck RobotStatus::Running::NavigationStuck()
-{
-  return RobotStatus::Stuck();
-}
-
-RobotStatus::Aborting RobotStatus::Running::AbortTask()
-{
-  return RobotStatus::Aborting();
-}
-
-// Stuck State
-
-RobotStatus::Idle RobotStatus::Stuck::TaskCompleted()
-{
-  return RobotStatus::Idle();
-}
-
-RobotStatus::Running RobotStatus::Stuck::Cleared()
-{
-  return RobotStatus::Running();
-}
-
-RobotStatus::Aborting RobotStatus::Stuck::AbortTask()
-{
-  return RobotStatus::Aborting();
-}
-
-// Aborting State
-
-RobotStatus::Running RobotStatus::Aborting::TaskAssigned()
-{
-  return RobotStatus::Running();
-}
-
-RobotStatus::Idle RobotStatus::Aborting::TaskAborted()
-{
-  return RobotStatus::Idle();
-}
-
-// Paused State
-
-RobotStatus::Idle RobotStatus::Paused::ResumeTaskAssignment()
-{
-  return RobotStatus::Idle();
-}
-
-// Charging State
-
-RobotStatus::Idle RobotStatus::Charging::ChargingComplete()
-{
-  return RobotStatus::Idle();
-}
-
-// Offline State
-
-RobotStatus::Idle RobotStatus::Offline::connected()
-{
-  return RobotStatus::Idle();
-}
-
-RobotClientsRobotStatus RobotStatus::GetStatus(StateMachine &status)
-{
-  return std::visit([](auto &&status) -> RobotClientsRobotStatus 
+  switch (newState)
   {
-    using T = std::decay_t<decltype(status)>;
-    if constexpr (std::is_same_v<T, std::monostate>)
-    {
-      return RobotClientsRobotStatus::Offline;
-    }
-    else
-    {
-      return status.GetStatus();
-    }
-  }, status);
+    case RobotClientsRobotStatus::Idle:
+      if (pauseTaskAssignmentFlag) 
+      {
+        robotStatus = RobotClientsRobotStatus::Paused;
+        return;
+        // Exit Function
+      }
+      break;
+    default:
+      break;
+  }
+  robotStatus = newState;
+}
+
+void RobotStatus::ConnnectedCloud()
+{
+  if (robotStatus == RobotClientsRobotStatus::Offline)
+    ChangeStatus(RobotClientsRobotStatus::Idle);
+}
+
+void RobotStatus::StartCharging()
+{
+  if (robotStatus == RobotClientsRobotStatus::Idle)
+    ChangeStatus(RobotClientsRobotStatus::Charging);
+}
+
+void RobotStatus::ChargingCompleted()
+{
+  if (robotStatus == RobotClientsRobotStatus::Charging)
+    ChangeStatus(RobotClientsRobotStatus::Idle);
+}
+
+void RobotStatus::TaskAssigned()
+{
+  if (robotStatus == RobotClientsRobotStatus::Idle || robotStatus == RobotClientsRobotStatus::Aborting)
+    ChangeStatus(RobotClientsRobotStatus::Running);
+}
+
+void RobotStatus::TaskCompleted()
+{
+  if (robotStatus == RobotClientsRobotStatus::Running || robotStatus == RobotClientsRobotStatus::Stuck)
+    ChangeStatus(RobotClientsRobotStatus::Idle);
+}
+
+void RobotStatus::NavigationStuck()
+{
+  if (robotStatus == RobotClientsRobotStatus::Running)
+    ChangeStatus(RobotClientsRobotStatus::Stuck);
+}
+
+void RobotStatus::NavigationCleared()
+{
+  if (robotStatus == RobotClientsRobotStatus::Stuck)
+    ChangeStatus(RobotClientsRobotStatus::Running);
+}
+
+void RobotStatus::PauseTaskAssignment()
+{
+  pauseTaskAssignmentFlag = true;
+  if (robotStatus != RobotClientsRobotStatus::Idle)
+  {
+    // Delay this state if the robot is running
+    return;
+  }
+  ChangeStatus(RobotClientsRobotStatus::Paused);
+}
+
+void RobotStatus::ResumeTaskAssignment()
+{
+  pauseTaskAssignmentFlag = false;
+  if (robotStatus == RobotClientsRobotStatus::Paused)
+  {
+    // Change state immediately if the robot is paused
+    ChangeStatus(RobotClientsRobotStatus::Idle);
+  }
+}
+
+void RobotStatus::TaskAborting()
+{
+  if (robotStatus == RobotClientsRobotStatus::Running || robotStatus == RobotClientsRobotStatus::Stuck)
+    ChangeStatus(RobotClientsRobotStatus::Aborting);
+}
+
+void RobotStatus::TaskAborted()
+{
+  if (robotStatus == RobotClientsRobotStatus::Aborting || robotStatus == RobotClientsRobotStatus::Running)
+    ChangeStatus(RobotClientsRobotStatus::Idle);
+}
+
+void RobotStatus::EnterCritical()
+{
+  if (robotStatus == RobotClientsRobotStatus::Critical)
+    return;
+
+  previousRobotStatus = robotStatus;
+  ChangeStatus(RobotClientsRobotStatus::Critical);
+}
+
+void RobotStatus::ExitCritical()
+{
+  if (robotStatus == RobotClientsRobotStatus::Critical)
+    ChangeStatus(previousRobotStatus);
 }
