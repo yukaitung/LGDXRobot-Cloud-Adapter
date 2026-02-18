@@ -8,12 +8,12 @@
 class IExchange
 {
   public:
-    virtual void SendMessage(const RobotClientsData &robotData,
-      const RobotClientsNextToken &nextToken,
-      const RobotClientsAbortToken &abortToken) = 0;
-    virtual void SendMessage(const RobotClientsSlamStatus status,
-      const RobotClientsData &robotData,
-      const RobotClientsMapData &mapData) = 0;  
+    virtual void SendMessage([[maybe_unused]] const RobotClientsData &robotData,
+      [[maybe_unused]] const RobotClientsNextToken &nextToken,
+      [[maybe_unused]] const RobotClientsAbortToken &abortToken) {};
+    virtual void SendMessage([[maybe_unused]] const RobotClientsSlamStatus status,
+      [[maybe_unused]] const RobotClientsData &robotData,
+      [[maybe_unused]] const RobotClientsMapData &mapData) {};  
     virtual void Shutdown() = 0;
     virtual grpc::Status AwaitCompletion() = 0;
 };
@@ -26,7 +26,6 @@ class CloudExchange : public IExchange
   public:
     CloudExchange(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr);
     void SendMessage(const RobotClientsData &robotData, const RobotClientsNextToken &nextToken, const RobotClientsAbortToken &abortToken) override;
-    void SendMessage(const RobotClientsSlamStatus, const RobotClientsData, const RobotClientsMapData) {}
     void Shutdown() override;
     grpc::Status AwaitCompletion() override;
 };
@@ -38,7 +37,6 @@ class SlamExchange : public IExchange
 
   public:
     SlamExchange(RobotClientsService::Stub *stub, std::shared_ptr<grpc::CallCredentials> accessToken, std::shared_ptr<CloudSignals> cloudSignalsPtr);
-    void SendMessage(const RobotClientsData, const RobotClientsNextToken, const RobotClientsAbortToken) {}
     void SendMessage(const RobotClientsSlamStatus status, const RobotClientsData &robotData, const RobotClientsMapData &mapData) override;
     void Shutdown() override;
     grpc::Status AwaitCompletion() override;

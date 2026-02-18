@@ -42,6 +42,10 @@ find_package(ament_cmake REQUIRED)
 find_package(Boost REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(nav2_util REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 include_directories(include)
 
@@ -51,6 +55,8 @@ add_library(lgdxrobot_cloud_component SHARED
   src/Exchange.cpp
   src/RobotStatus.cpp
   src/SlamExchangeStream.cpp
+  src/Map.cpp
+  src/Navigation.cpp
 )
 target_link_libraries(lgdxrobot_cloud_component
   ${PROTO_NAME}
@@ -61,6 +67,10 @@ target_link_libraries(lgdxrobot_cloud_component
 ament_target_dependencies(lgdxrobot_cloud_component
   rclcpp
   rclcpp_components
+  nav_msgs
+  nav2_msgs
+  nav2_util
+  geometry_msgs
 )
 
 rclcpp_components_register_node(lgdxrobot_cloud_component
