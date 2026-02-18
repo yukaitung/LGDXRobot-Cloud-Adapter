@@ -1,0 +1,3 @@
+bool hardware_emergency_stop_enabled
+bool battery_low_emergency_stop_enabled
+float32[2] batteries_voltage
