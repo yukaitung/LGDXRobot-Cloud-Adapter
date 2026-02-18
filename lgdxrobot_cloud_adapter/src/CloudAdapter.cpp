@@ -46,6 +46,7 @@ void CloudAdapter::Initalise()
   // Components
   cloudSignals = std::make_shared<CloudSignals>();
   navigationSignals = std::make_shared<NavigationSignals>();
+  navProgress = std::make_shared<RobotClientsAutoTaskNavProgress>();
   navigation = std::make_unique<Navigation>(shared_from_this(), navigationSignals, navProgress);
   if (isSlam)
   {
