@@ -49,6 +49,7 @@ class CloudAdapter : public rclcpp::Node
     std::unique_ptr<tf2_ros::Buffer> tfBuffer;
 
     // Robot Data
+    RobotStatus::StateMachine robotStatus = RobotStatus::Offline();
     bool isSlam = false;
     bool pauseTaskAssignment = false;
     lgdxrobot_cloud_msgs::msg::RobotData robotData;
@@ -77,8 +78,6 @@ class CloudAdapter : public rclcpp::Node
     std::unique_ptr<RobotClientsService::Stub> grpcRealtimeStub;
     std::unique_ptr<RobotClientsService::Stub> grpcStub;
     std::shared_ptr<grpc::CallCredentials> accessToken;
-
-    RobotStatus::StateMachine robotStatus = RobotStatus::Offline();
     CloudErrorRetryData cloudErrorRetryData;
 
     std::string ReadCertificate(const char *filename);
@@ -88,18 +87,35 @@ class CloudAdapter : public rclcpp::Node
     void SetSystemInfo(RobotClientsSystemInfo *info);
     void HandleError();
 
+    void UpdateExchange();
+    void CloudExchange();
+    void SlamExchange();
+    void OnSlamMapUpdate(const nav_msgs::msg::OccupancyGrid &msg);
+
+    void TryExitCriticalStatus();
+
   public:
     CloudAdapter(const rclcpp::NodeOptions &options);
     void Initalise();
 
     void Greet(std::string mcuSN);
-    void Exchange(const RobotClientsData &robotData,
-      const RobotClientsNextToken &nextToken,
-      const RobotClientsAbortToken &abortToken);
-    void SlamExchange(const RobotClientsSlamStatus status,
-      const RobotClientsData &robotData,
-      const RobotClientsMapData &mapData);
     void OnErrorOccured();
+
+    void OnConnectedCloud();
+    void CloudAutoTaskNext();
+    void CloudAutoTaskAbort(RobotClientsAbortReason reason);
+    void OnNextCloudChange();
+    void OnHandleClouldExchange(const RobotClientsResponse *response);
+    void OnNextSlamExchange();
+    void OnHandleSlamExchange(const RobotClientsSlamCommands *response);
+
+    void OnNavigationStart();
+    void OnNavigationDone();
+    void OnNavigationAborted();
+    void OnNavigationStuck();
+    void OnNavigationCleared();
+
+    void Shutdown();
 };
 
 }

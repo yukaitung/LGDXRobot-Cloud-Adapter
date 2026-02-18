@@ -7,6 +7,8 @@
 
 #include <rclcpp_components/register_node_macro.hpp>
 #include "lgdxrobot_cloud_adapter/CloudAdapter.hpp"
+#include "nav2_util/geometry_utils.hpp"
+
 
 namespace LGDXRobotCloud
 {
@@ -47,9 +49,9 @@ void CloudAdapter::Initalise()
       std::bind(&RobotController::SlamExchange, this));*/
     cloudExchangeTimer->cancel();
 
-    /*mapSubscription = this->create_subscription<nav_msgs::msg::OccupancyGrid>("map", 
+    mapSubscription = this->create_subscription<nav_msgs::msg::OccupancyGrid>("map", 
       rclcpp::SensorDataQoS().reliable(), 
-      std::bind(&RobotController::OnSlamMapUpdate, this, std::placeholders::_1));*/
+      std::bind(&CloudAdapter::OnSlamMapUpdate, this, std::placeholders::_1));
   }
   else
   {
@@ -197,6 +199,51 @@ void CloudAdapter::HandleError()
   // set hasError to false when greet success
 }
 
+void CloudAdapter::UpdateExchange()
+{
+  if (isSlam)
+  {
+    exchangeRobotData.set_robotstatus(RobotStatus::GetStatus(robotStatus) == RobotClientsRobotStatus::Critical ? RobotClientsRobotStatus::Critical : RobotClientsRobotStatus::Paused);
+  }
+  else
+  {
+    exchangeRobotData.set_robotstatus(RobotStatus::GetStatus(robotStatus));
+  }
+  exchangeRobotData.mutable_criticalstatus()->CopyFrom(criticalStatus);
+  auto exchangeBatteries = exchangeRobotData.mutable_batteries();
+  exchangeBatteries->Clear();
+  exchangeBatteries->Reserve(batteries.size());
+  for (size_t i = 0; i < batteries.size(); i++)
+  {
+    exchangeBatteries->AddAlreadyReserved(batteries[i]);
+  }
+  try
+  {
+    geometry_msgs::msg::TransformStamped t;
+    t = tfBuffer->lookupTransform("base_link", "map", tf2::TimePointZero);
+
+    tf2::Quaternion q(
+        t.transform.rotation.x,
+        t.transform.rotation.y,
+        t.transform.rotation.z,
+        t.transform.rotation.w);
+    tf2::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+
+    exchangeRobotData.mutable_position()->set_x(-(t.transform.translation.x * cos(yaw) + t.transform.translation.y * sin(yaw)));
+    exchangeRobotData.mutable_position()->set_y(-(-t.transform.translation.x * sin(yaw) + t.transform.translation.y * cos(yaw)));
+    exchangeRobotData.mutable_position()->set_rotation(yaw);
+  }
+  catch (const tf2::TransformException &ex) 
+  {
+    exchangeRobotData.mutable_position()->set_x(0.0);
+    exchangeRobotData.mutable_position()->set_y(0.0);
+    exchangeRobotData.mutable_position()->set_rotation(0.0);
+  }
+  exchangeRobotData.mutable_navprogress()->CopyFrom(*navProgress);
+  exchangeRobotData.set_pausetaskassignment(pauseTaskAssignment);
+}
 
 void CloudAdapter::Greet(std::string mcuSN)
 {
@@ -252,26 +299,98 @@ void CloudAdapter::Greet(std::string mcuSN)
   });
 }
 
-void CloudAdapter::Exchange(const RobotClientsData &robotData,
-  const RobotClientsNextToken &nextToken,
-  const RobotClientsAbortToken &abortToken)
+void CloudAdapter::CloudExchange()
 {
-  /*
-  if (cloudExchangeStream != nullptr)
-  {
-    cloudExchangeStream->SendMessage(robotData, nextToken, abortToken);
-  }*/
+  if (!cloudExchangeTimer->is_canceled())
+    cloudExchangeTimer->cancel();
+
+  UpdateExchange();
+
+  //robotControllerSignals->CloudExchange(exchangeRobotData, exchangeNextToken, exchangeAbortToken);
+
+  // Clear the token to indicate that the exchange is done
+  exchangeNextToken.Clear();
+  exchangeAbortToken.Clear();
+  // Don't reset the cloudExchangeTimer here
 }
 
-void CloudAdapter::SlamExchange(const RobotClientsSlamStatus status,
-  const RobotClientsData &robotData,
-  const RobotClientsMapData &mapData)
+void CloudAdapter::SlamExchange()
 {
-  /*
-  if (slamExchangeStream != nullptr)
+  if (!cloudExchangeTimer->is_canceled())
+  cloudExchangeTimer->cancel();
+
+  UpdateExchange();
+
+  exchangeMapData.Clear();
+  if (mapHasUpdated)
   {
-    slamExchangeStream->SendMessage(status, robotData, mapData);
-  }*/
+    exchangeMapData.CopyFrom(mapData);
+    mapHasUpdated = false;
+  }
+  //robotControllerSignals->SlamExchange(exchangeSlamStatus, exchangeRobotData, exchangeMapData);
+  // Don't reset the slamExchangeTimer here
+}
+
+void CloudAdapter::OnSlamMapUpdate(const nav_msgs::msg::OccupancyGrid &msg)
+{
+  // Compare the map with the current map
+  int incomingSize = (int)msg.data.size();
+  if (incomingSize == mapData.data_size())
+  {
+    bool same = true;
+    for (size_t i = 0; i < msg.data.size(); i++)
+    {
+      if ((int32_t)msg.data[i] != mapData.data(i))
+      {
+        same = false;
+        break;
+      }
+    }
+    if (same)
+    {
+      return;
+    }
+  }
+
+  // Update the map
+  mapData.set_resolution(msg.info.resolution);
+  mapData.set_width(msg.info.width);
+  mapData.set_height(msg.info.height);
+  // Origin
+  auto origin = mapData.mutable_origin();
+  origin->set_x(msg.info.origin.position.x);
+  origin->set_y(msg.info.origin.position.y);
+  tf2::Quaternion q(
+    msg.info.origin.orientation.x,
+    msg.info.origin.orientation.y,
+    msg.info.origin.orientation.z,
+    msg.info.origin.orientation.w);
+  tf2::Matrix3x3 m(q);
+  double roll, pitch, yaw;
+  m.getRPY(roll, pitch, yaw);
+  origin->set_rotation(yaw);
+  // Map Data
+  auto md = mapData.mutable_data();
+  md->Clear();
+  md->Reserve(incomingSize);
+  for (int i = 0; i < incomingSize; i++)
+  {
+    md->AddAlreadyReserved(msg.data[i]);
+  }
+  mapHasUpdated = true;
+}
+
+void CloudAdapter::TryExitCriticalStatus()
+{
+  // Ensure no unreslovable status
+  if (criticalStatus.hardwareemergencystop() == true ||
+        criticalStatus.batterylow_size() > 0 ||
+        criticalStatus.motordamaged_size() > 0)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Unresolvable critical status, will not exit.");
+    return;
+  }
+  //robotStatus.ExitCritical();
 }
 
 void CloudAdapter::OnErrorOccured()
@@ -280,6 +399,270 @@ void CloudAdapter::OnErrorOccured()
   {
     RCLCPP_ERROR(this->get_logger(), "Cloud error occured.");
     cloudRetryTimer->reset();
+  }
+}
+
+
+void CloudAdapter::OnConnectedCloud()
+{
+  //robotStatus.ConnnectedCloud();
+}
+
+void CloudAdapter::CloudAutoTaskNext()
+{
+  if (!currentTask.next_token.empty())
+  {
+    // Setup the next token for the exchange
+    RCLCPP_INFO(this->get_logger(), "AutoTask advances to next progress.");
+    exchangeNextToken.set_taskid(currentTask.task_id);
+    exchangeNextToken.set_nexttoken(currentTask.next_token);
+  }
+}
+
+void CloudAdapter::CloudAutoTaskAbort(RobotClientsAbortReason reason)
+{
+  if (!currentTask.next_token.empty())
+  {
+    // Setup the next token for the exchange
+    //robotStatus.TaskAborting();
+    RCLCPP_INFO(this->get_logger(), "AutoTask will be aborted.");
+    exchangeAbortToken.set_taskid(currentTask.task_id);
+    exchangeAbortToken.set_nexttoken(currentTask.next_token);
+    exchangeAbortToken.set_abortreason(reason);
+  }
+}
+
+void CloudAdapter::OnNextCloudChange()
+{
+  cloudExchangeTimer->reset();
+}
+
+void CloudAdapter::OnHandleClouldExchange(const RobotClientsResponse *response)
+{
+
+  // Handle AutoTask
+  if (response->has_task())
+  {
+    RobotClientsAutoTask task = response->task();
+    currentTask.task_id = task.taskid();
+    currentTask.task_name = task.taskname();
+    currentTask.task_progress_id = task.taskprogressid();
+    currentTask.task_progress_name = task.taskprogressname();
+    currentTask.next_token = task.nexttoken();
+    if (currentTask.task_progress_id == 3)
+    {
+      RCLCPP_INFO(this->get_logger(), "AutoTask Id: %d completed.", task.taskid());
+      //robotStatus.TaskCompleted();
+    }
+    else if (currentTask.task_progress_id == 4)
+    {
+      RCLCPP_INFO(this->get_logger(), "AutoTask Id: %d aborted.", task.taskid());
+      //robotControllerSignals->NavigationAbort();
+      //robotStatus.TaskAborted();
+    }
+    else
+    {
+      RCLCPP_INFO(this->get_logger(), "Received AutoTask Id: %d, Progress: %d", task.taskid(), task.taskprogressid());
+      if (task.paths_size())
+      {
+        RCLCPP_INFO(this->get_logger(), "This task has %d waypoint(s).", task.paths_size());
+        navigationPaths.clear();
+        navigationPaths.assign(task.paths().begin(), task.paths().end());
+        navigationProgress = 0;
+        OnNavigationStart();
+      }
+      //robotStatus.TaskAssigned();
+    }
+  }
+
+  // Handle Robot Commands
+  if (response->has_commands())
+  {
+    auto commands = response->commands();
+    if (commands.has_aborttask() && commands.aborttask() == true)
+    {
+      CloudAutoTaskAbort(RobotClientsAbortReason::UserApi);
+    }
+    if (commands.has_softwareemergencystopenable() && commands.softwareemergencystopenable() == true)
+    {
+      RCLCPP_INFO(this->get_logger(), "Enabling software emergency stop");
+      criticalStatus.set_softwareemergencystop(true);
+      //robotStatus.EnterCritical();
+    }
+    if (commands.has_softwareemergencystopdisable() && commands.softwareemergencystopdisable() == true)
+    {
+      RCLCPP_INFO(this->get_logger(), "Disabling software emergency stop");
+      criticalStatus.set_softwareemergencystop(false);
+      //TryExitCriticalStatus();
+    }
+    if (commands.has_pausetaskassignmentenable() && commands.pausetaskassignmentenable() == true)
+    {
+      RCLCPP_INFO(this->get_logger(), "Pausing task Assignment");
+      pauseTaskAssignment = true;
+      //robotStatus.PauseTaskAssignment();
+    }
+    if (commands.has_pausetaskassignmentdisable() && commands.pausetaskassignmentdisable() == true)
+    {
+      RCLCPP_INFO(this->get_logger(), "Resuming task Assignment");
+      pauseTaskAssignment = false;
+      //robotStatus.ResumeTaskAssignment();
+    }
+  }
+}
+
+void CloudAdapter::OnNextSlamExchange()
+{
+  cloudExchangeTimer->reset();
+}
+
+void CloudAdapter::OnHandleSlamExchange(const RobotClientsSlamCommands *respond)
+{
+  if (respond->has_setgoal())
+  {
+    if (exchangeSlamStatus == RobotClientsSlamStatus::SlamRunning)
+    {
+      overwriteGoal = true;
+    }
+    double x = respond->setgoal().x();
+    double y = respond->setgoal().y();
+    double rotation = respond->setgoal().rotation();
+    RCLCPP_INFO(this->get_logger(), "A new goal is set: %fm, %fm, %frad", x, y, rotation);
+    std::vector<geometry_msgs::msg::PoseStamped> poses;
+    auto pose = geometry_msgs::msg::PoseStamped();
+    pose.header.stamp = rclcpp::Clock().now();
+    pose.header.frame_id = "map";
+    pose.pose.position.z = 0.0;
+    pose.pose.position.x = x;
+    pose.pose.position.y = y;
+    pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(rotation);
+    poses.push_back(pose);
+    //robotControllerSignals->NavigationStart(poses);
+    exchangeSlamStatus = RobotClientsSlamStatus::SlamRunning;
+  }
+  if (respond->has_abortgoal() && respond->abortgoal() == true)
+  {
+    RCLCPP_INFO(this->get_logger(), "Aborting the current goal");
+    //robotControllerSignals->NavigationAbort();
+  }
+  if (respond->has_softwareemergencystopenable() && respond->softwareemergencystopenable() == true)
+  {
+    RCLCPP_INFO(this->get_logger(), "Enabling software emergency stop");
+    criticalStatus.set_softwareemergencystop(true);
+    //robotStatus.EnterCritical();
+  }
+  if (respond->has_softwareemergencystopdisable() && respond->softwareemergencystopdisable() == true)
+  {
+    RCLCPP_INFO(this->get_logger(), "Disabling software emergency stop");
+    criticalStatus.set_softwareemergencystop(false);
+    //TryExitCriticalStatus();
+  }
+  if (respond->has_savemap() && respond->savemap() == true)
+  {
+    RCLCPP_INFO(this->get_logger(), "Saving the map");
+    //robotControllerSignals->SaveMap();
+  }
+  if (respond->has_refreshmap() && respond->refreshmap() == true)
+  {
+    RCLCPP_INFO(this->get_logger(), "Refreshing the map");
+    mapHasUpdated = true;
+  }
+  if (respond->has_abortslam() && respond->abortslam() == true)
+  {
+    RCLCPP_INFO(this->get_logger(), "Aborting the current SLAM");
+    //robotControllerSignals->NavigationAbort();
+    //robotControllerSignals->Shutdown();
+  }
+  if (respond->has_completeslam() && respond->completeslam() == true)
+  {
+    //robotControllerSignals->NavigationAbort();
+    RCLCPP_INFO(this->get_logger(), "Completing the current SLAM and saving the map with 5 seconds blocking");
+    //robotControllerSignals->SaveMap();
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    //robotControllerSignals->Shutdown();
+  }
+}
+
+void CloudAdapter::OnNavigationStart()
+{
+  if (navigationProgress < navigationPaths.size())
+  {
+    std::vector<geometry_msgs::msg::PoseStamped> poses;
+    auto pose = geometry_msgs::msg::PoseStamped();
+    pose.header.stamp = rclcpp::Clock().now();
+    pose.header.frame_id = "map";
+    pose.pose.position.z = 0.0;
+    for (int i = 0; i < navigationPaths.at(navigationProgress).waypoints_size(); i++)
+    {
+      const RobotClientsDof waypoint = navigationPaths.at(navigationProgress).waypoints(i);
+      pose.pose.position.x = waypoint.x();
+      pose.pose.position.y = waypoint.y();
+      pose.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(waypoint.rotation());
+      poses.push_back(pose);
+    }
+    //robotControllerSignals->NavigationStart(poses);
+    navigationProgress++;
+  }
+  else
+  {
+    //CloudAutoTaskNext();
+  }
+}
+
+void CloudAdapter::OnNavigationDone()
+{
+  if (isSlam)
+  {
+    exchangeSlamStatus = RobotClientsSlamStatus::SlamSuccess;
+  }
+  else
+  {
+    OnNavigationStart();
+  }
+}
+
+void CloudAdapter::OnNavigationStuck()
+{
+  if (!isSlam) 
+  {
+    //robotStatus.NavigationStuck();
+  }
+  // Do nothing is SLAM
+}
+
+void CloudAdapter::OnNavigationCleared()
+{
+  if (!isSlam) 
+  {
+    //robotStatus.NavigationCleared();
+  }
+  // Do nothing is SLAM
+}
+
+void CloudAdapter::OnNavigationAborted()
+{
+  if (isSlam)
+  {
+    if (overwriteGoal)
+    {
+      // Not showing aborted because the goal was overwritten
+      overwriteGoal = false;
+    }
+    else
+    {
+      exchangeSlamStatus = RobotClientsSlamStatus::SlamAborted;
+    }
+  }
+  else
+  {
+    //CloudAutoTaskAbort(RobotClientsAbortReason::NavStack);
+  }
+}
+
+void CloudAdapter::Shutdown()
+{
+  if (cloudExchangeTimer != nullptr && !cloudExchangeTimer->is_canceled())
+  {
+    cloudExchangeTimer->cancel();
   }
 }
 
