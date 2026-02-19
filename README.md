@@ -87,6 +87,10 @@ LGDXRobot Cloud requires the following information provided by the robot. Change
 | --- | --- | --- |
 | /cloud/software_emergency_stop | std_msgs/Bool | Enables or disables the software emergency stop to halt robot movement. |
 
+### Transform
+
+The LGDXRobot Cloud Adapter requires the transform from the `map` frame to the robot’s `base_link` frame. This transform is usually provided by the Nav2 stack.
+
 ### Parameters
 
 | Parameter Name | Type | Description |
