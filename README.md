@@ -64,10 +64,11 @@ colcon build --symlink-install
 
 ## Robot Integration
 
-The LGDXRobot Cloud Adapter is designed for any robot running ROS 2 and Nav2.  
-The robot’s ROS node must map the topics listed below.
+To integrate any ROS 2 robot with LGDXRobot Cloud, the robot must map the following topics and services. In addition, Nav2 must be installed on the robot.
 
-### Published Topics
+LGDXRobot Cloud requires the following information provided by the robot. Change the robot node to map the following topics.
+
+### Published From the Robot
 
 | Topic Name | Type | Description |
 | --- | --- | --- |
@@ -80,15 +81,13 @@ The robot’s ROS node must map the topics listed below.
 | hardware_emergency_stop_enabled | bool | Indicates whether the robot is in a hardware emergency stop state. |
 | batteries_voltage | float32[2] | Battery voltages: [0] for the first battery, [1] for the second battery. |
 
-### Subscribed Topics
+### Subscribed From the Cloud Adapter
 
 | Topic Name | Type | Description |
 | --- | --- | --- |
 | /cloud/software_emergency_stop | std_msgs/Bool | Enables or disables the software emergency stop to halt robot movement. |
 
 ### Parameters
-
-When starting the LGDXRobot Cloud Adapter, the following parameters must be configured:
 
 | Parameter Name | Type | Description |
 | --- | --- | --- |
@@ -97,4 +96,3 @@ When starting the LGDXRobot Cloud Adapter, the following parameters must be conf
 | root_cert | string | Path to the server root certificate. |
 | client_key | string | Path to the client's private key. |
 | client_cert | string | Path to the client's certificate chain. |
-
