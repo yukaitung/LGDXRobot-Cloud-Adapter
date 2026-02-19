@@ -193,6 +193,7 @@ void CloudAdapter::Initalise()
   bool needMcuSn = this->get_parameter("need_mcu_sn").as_bool();
   if (needMcuSn)
   {
+    RCLCPP_INFO(this->get_logger(), "Awaiting MCU Serial Number...");
     // Require MCU Serial Number before connecting to the cloud
     mcuSerialNumberService = this->create_service<lgdxrobot_cloud_msgs::srv::McuSn>("mcu_sn",
       [this](const std::shared_ptr<lgdxrobot_cloud_msgs::srv::McuSn::Request> request,
