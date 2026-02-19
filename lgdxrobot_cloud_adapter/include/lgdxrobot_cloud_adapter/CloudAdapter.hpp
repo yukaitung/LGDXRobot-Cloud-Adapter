@@ -131,6 +131,7 @@ class CloudAdapter : public rclcpp::Node
 
   public:
     CloudAdapter(const rclcpp::NodeOptions &options);
+    ~CloudAdapter();
 };
 
 }

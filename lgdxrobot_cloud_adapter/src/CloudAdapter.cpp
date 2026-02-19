@@ -18,6 +18,11 @@ CloudAdapter::CloudAdapter(const rclcpp::NodeOptions &options) : Node("lgdxrobot
   timer = this->create_wall_timer(std::chrono::microseconds(1), [this]() {this->Initalise();});
 }
 
+CloudAdapter::~CloudAdapter()
+{
+  Shutdown();
+}
+
 void CloudAdapter::Initalise()
 {
   timer->cancel();
