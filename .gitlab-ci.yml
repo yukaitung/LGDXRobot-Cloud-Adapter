@@ -121,6 +121,10 @@ release:
   needs:
     - job: prepare
       artifacts: true
+    - job: build-amd64
+      artifacts: false
+    - job: build-arm64
+      artifacts: false
   script:
     - apk add glab
   release:
