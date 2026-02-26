@@ -36,7 +36,6 @@ build-amd64:
   rules:
     - if: $CI_COMMIT_TAG
       when: never 
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   image: docker:24.0.5-git
   needs:
     - job: prepare
@@ -64,7 +63,6 @@ build-arm64:
   rules:
     - if: $CI_COMMIT_TAG
       when: never 
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   image: docker:24.0.5-git
   needs:
     - job: prepare
@@ -92,6 +90,32 @@ build-arm64:
 #
 # Release
 #
+
+upload:
+  stage: release
+  image: alpine:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never 
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  needs:
+    - job: build-amd64
+      artifacts: true
+    - job: build-arm64
+      artifacts: true
+  before_script:
+    - apk add curl
+  script:
+    - cd debs
+    - |
+      curl --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+           --upload-file lgdxrobot-cloud-adapter-amd64.zip \
+           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/LGDXRobot-Cloud-Adapter/$CI_COMMIT_BRANCH/lgdxrobot-cloud-adapter-amd64.zip"
+    - |
+      curl --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+           --upload-file lgdxrobot-cloud-adapter-arm64.zip \
+           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/LGDXRobot-Cloud-Adapter/$CI_COMMIT_BRANCH/lgdxrobot-cloud-adapter-arm64.zip"
+
     
 release:
   stage: release
@@ -103,41 +127,10 @@ release:
   needs:
     - job: prepare
       artifacts: true
-    - job: build-amd64
-      artifacts: true
-    - job: build-arm64
-      artifacts: true
   before_script:
     - apk add glab
-    - apk add curl
-  script:
-    - cd debs
-    - |
-      curl --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-           --upload-file lgdxrobot-cloud-adapter-amd64.zip \
-           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/LGDXRobot-Cloud-Adapter/$APP_VERSION/lgdxrobot-cloud-adapter-amd64.zip"
-    - |
-      curl --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-           --upload-file lgdxrobot-cloud-adapter-amd64.zip \
-           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/LGDXRobot-Cloud-Adapter/latest/lgdxrobot-cloud-adapter-amd64.zip"
-    - |
-      curl --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-           --upload-file lgdxrobot-cloud-adapter-arm64.zip \
-           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/LGDXRobot-Cloud-Adapter/$APP_VERSION/lgdxrobot-cloud-adapter-arm64.zip"
-    - |
-      curl --location --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-           --upload-file lgdxrobot-cloud-adapter-arm64.zip \
-           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/LGDXRobot-Cloud-Adapter/latest/lgdxrobot-cloud-adapter-arm64.zip"
   release:
     name : '$APP_VERSION'
     tag_name: '$APP_VERSION'
     description: '$APP_VERSION'
     ref: '$CI_COMMIT_SHA'
-    assets:
-      links:
-        - name: 'LGDXRobot Cloud Adapter .deb Packages for AMD64/x86-64'
-          url: 'https://gitlab.com/api/v4/projects/79562400/packages/generic/LGDXRobot-Cloud-Adapter/$APP_VERSION/lgdxrobot-cloud-adapter-amd64.zip'
-        - name: 'LGDXRobot Cloud Adapter .deb Packages for ARM64/AArch64'
-          url: 'https://gitlab.com/api/v4/projects/79562400/packages/generic/LGDXRobot-Cloud-Adapter/$APP_VERSION/lgdxrobot-cloud-adapter-arm64.zip'
-
-
