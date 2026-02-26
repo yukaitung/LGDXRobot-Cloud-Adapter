@@ -116,7 +116,6 @@ upload:
            --upload-file lgdxrobot-cloud-adapter-arm64.zip \
            "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/LGDXRobot-Cloud-Adapter/$CI_COMMIT_BRANCH/lgdxrobot-cloud-adapter-arm64.zip"
 
-    
 release:
   stage: release
   image: alpine:latest
@@ -127,7 +126,7 @@ release:
   needs:
     - job: prepare
       artifacts: true
-  before_script:
+  script:
     - apk add glab
   release:
     name : '$APP_VERSION'
