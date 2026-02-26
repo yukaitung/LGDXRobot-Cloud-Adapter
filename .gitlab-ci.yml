@@ -17,7 +17,7 @@ build-amd64:
   rules:
     - if: $CI_COMMIT_TAG
       when: never 
-    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_COMMIT_BRANCH !~ /\//
   tags:
     - saas-linux-small-amd64
   services:
@@ -41,7 +41,7 @@ build-arm64:
   rules:
     - if: $CI_COMMIT_TAG
       when: never 
-    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_COMMIT_BRANCH !~ /\//
   tags:
     - saas-linux-small-arm64
   variables:
@@ -114,7 +114,7 @@ auto_merge:
   rules:
     - if: $CI_COMMIT_TAG
       when: never 
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" # Only in main branch
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH  # Only in main branch
   before_script:
     - apk add curl
     - apk add jq
