@@ -15,10 +15,6 @@ stages:
 
 prepare:
   stage: prepare
-  rules:
-    - if: $CI_COMMIT_TAG
-      when: never 
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   image: alpine:latest
   script:
     - apk add libxml2-utils
@@ -92,7 +88,7 @@ upload:
   rules:
     - if: $CI_COMMIT_TAG
       when: never 
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == "jazzy" || $CI_COMMIT_BRANCH == "humble" # Only in jazzy and humble branches
   needs:
     - job: build-amd64
       artifacts: true
@@ -117,7 +113,7 @@ release:
   rules:
     - if: $CI_COMMIT_TAG
       when: never 
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH # Only in main branch
   needs:
     - job: prepare
       artifacts: true
@@ -137,7 +133,7 @@ auto_merge:
   image: alpine:latest
   stage: auto_merge
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" # Only in main branch
   before_script:
     - apk add curl
     - apk add jq
@@ -174,3 +170,4 @@ auto_merge:
            "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/issues?title=Cannot%20cherry-pick%20${CI_COMMIT_SHA}%20into%20${DISTRO}%20(MR%20${MR_IID})&labels=cicd&description=Based%20on%20${MR_URL}"
         fi
       done
+
