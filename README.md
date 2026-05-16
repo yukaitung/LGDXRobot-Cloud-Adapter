@@ -1,6 +1,6 @@
 # LGDXRobot Cloud Adapter
 
-[![pipeline status](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/badges/main/pipeline.svg)](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/-/commits/main)  [![Latest Release](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/-/badges/release.svg)](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/-/releases) [![Release Strategy](https://img.shields.io/badge/Release_Strategy-821B1D)](https://bristolgram.uk/handbook/release-strategy/)
+[![pipeline status](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/badges/main/pipeline.svg)](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/-/commits/main)  [![Latest Release](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/-/badges/release.svg)](https://gitlab.com/lgdxrobotics/lgdxrobot-cloud-adapter/-/releases) [![Release Strategy](https://img.shields.io/badge/Release_Strategy-821B1D)](https://lgdxrobot.uk/handbook/release-strategy/)
 
 ## Overview
 
@@ -11,8 +11,8 @@ The LGDXRobot Cloud Adapter is a ROS 2 node that integrates any robot with the L
 
 ### Getting Help
 
-- [Homepage](https://bristolgram.uk/cloud/)
-- [Documentation](https://bristolgram.uk/cloud/docs/)
+- [Homepage](https://lgdxrobot.uk/cloud/)
+- [Documentation](https://lgdxrobot.uk/cloud/docs/)
 - Issue boards on both GitLab and GitHub
 
 ## Installation
@@ -24,7 +24,7 @@ The LGDXRobot Cloud Adapter is a ROS 2 node that integrates any robot with the L
 3. The packages are hosted in a self-hosted repository, install this package to add the repository and the public key.
 
 ```bash
-wget -q http://packages.bristolgram.uk/lgdxrobotics-apt-source.deb
+wget -q http://packages.lgdxrobot.uk/lgdxrobotics-apt-source.deb
 sudo dpkg -i lgdxrobotics-apt-source.deb
 sudo apt update
 ```
